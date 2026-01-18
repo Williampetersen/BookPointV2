@@ -1,0 +1,12 @@
+{
+  "name": "bookpoint",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "wp-scripts start",
+    "build": "wp-scripts build"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^30.8.0"
+  }
+}
