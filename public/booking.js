@@ -10,51 +10,36 @@
     currency_symbol_position: "after",
     decimals: 2,
     decimal_separator: ".",
-    thousand_separator: ","
+    thousand_separator: ",",
   };
-  const assets = (cfg.pluginUrl || "/") + "assets/";
+  const settings = cfg.settings || {};
+  const helpInfo = settings.help || {};
 
   const defaults = {
-    serviceImg: assets + "images/service-image.png",
-    staffImg: assets + "images/default-avatar.jpg",
-    extraImg: assets + "images/service-image.png",
+    serviceImg: (cfg.pluginUrl || "/") + "assets/images/service-image.png",
+    staffImg: (cfg.pluginUrl || "/") + "assets/images/default-avatar.jpg",
+    extraImg: (cfg.pluginUrl || "/") + "assets/images/service-image.png",
   };
 
-  async function bpFetch(path, opts = {}) {
-    const url = (cfg.restUrl || "/wp-json/") + path.replace(/^\//, "");
-    const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
-    if (cfg.nonce) headers["X-WP-Nonce"] = cfg.nonce;
-    const res = await fetch(url, { ...opts, headers });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.code || data?.message && data?.message !== "" || data?.ok === false) {
-      const msg = data?.message || "Request failed";
-      throw new Error(msg);
-    }
-    return data?.data ?? data;
-  }
+  const steps = [
+    "Service",
+    "Extras",
+    "Staff",
+    "Date + Time",
+    "Your Details",
+    "Confirm",
+    "Success",
+  ];
 
-  function esc(s) {
-    return String(s ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
-  }
-
-  function formatPrice(amount, settings = currencySettings) {
-    const decimals = Number.isFinite(Number(settings.decimals)) ? Number(settings.decimals) : 2;
-    const decSep = settings.decimal_separator || ".";
-    const thouSep = settings.thousand_separator || ",";
-    const before = settings.currency_symbol_before || "";
-    const after = settings.currency_symbol_after || "";
-    const position = settings.currency_symbol_position || "before";
-    const fixed = Number(amount || 0).toFixed(decimals);
-    const parts = fixed.split(".");
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, thouSep);
-    const formatted = parts.length > 1 ? parts[0] + decSep + parts[1] : parts[0];
-    if (position === "after") return `${formatted}${after}`;
-    return `${before}${formatted}${after}`;
-  }
+  const stepDescriptions = {
+    1: "Choose a service that fits your needs.",
+    2: "Add optional extras to personalize your booking.",
+    3: "Pick a staff member you trust.",
+    4: "Select a date and available slot.",
+    5: "Share your contact details.",
+    6: "Review everything before confirming.",
+    7: "Booking completed — check your confirmation.",
+  };
 
   const state = {
     step: 1,
@@ -66,35 +51,61 @@
     slots: [],
     formFields: { defaults: [], customs: [] },
     formValues: {},
-    selected: {
-      service: null,
-      extras: [],
-      staff: null,
-      date: "",
-      slot: null,
-    },
-    booking: {
-      code: "",
-      status: "",
-    },
+    selected: { service: null, extras: [], staff: null, date: "", slot: null },
+    booking: { code: "", status: "" },
     formErrors: {},
   };
 
-  const modalId = "bp-booking-modal";
+  const modalId = "bp-bookpoint-modal";
   let modal = document.getElementById(modalId);
 
-  if (!modal) {
+  function formatPrice(amount, settingsOverride) {
+    const settingsUsed = settingsOverride || currencySettings;
+    const decimals = Number.isFinite(Number(settingsUsed.decimals)) ? Number(settingsUsed.decimals) : 2;
+    const decSep = settingsUsed.decimal_separator || ".";
+    const thouSep = settingsUsed.thousand_separator || ",";
+    const before = settingsUsed.symbol_before || settingsUsed.currency_symbol_before || "";
+    const after = settingsUsed.symbol_after || settingsUsed.currency_symbol_after || "";
+    const position = settingsUsed.position || settingsUsed.currency_symbol_position || "before";
+    const fixed = Number(amount || 0).toFixed(decimals);
+    const parts = fixed.split(".");
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, thouSep);
+    const formatted = parts.length > 1 ? parts[0] + decSep + parts[1] : parts[0];
+    if (position === "after") return `${formatted}${after}`;
+    return `${before}${formatted}${after}`;
+  }
+
+  function esc(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function bpFetch(path, opts = {}) {
+    const url = (cfg.restUrl || "/wp-json/") + path.replace(/^\//, "");
+    const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+    if (cfg.nonce) headers["X-WP-Nonce"] = cfg.nonce;
+    return fetch(url, { ...opts, headers })
+      .then((res) => res.json().catch(() => ({})).then((data) => {
+        if (!res.ok || data?.ok === false || data?.code) throw new Error(data?.message || i18n.error || "Request failed");
+        return data?.data ?? data;
+      }));
+  }
+
+  function createModal() {
     modal = document.createElement("div");
     modal.id = modalId;
     modal.className = "bp-modal";
-    modal.setAttribute("aria-hidden", "true");
+    modal.setAttribute("role", "presentation");
     modal.innerHTML = `
       <div class="bp-modal__backdrop" data-bp-close></div>
-      <div class="bp-modal__panel" role="dialog" aria-modal="true" aria-labelledby="bpModalTitle">
+      <div class="bp-modal__panel" role="dialog" aria-modal="true" aria-label="${esc(i18n.ariaTitle || "BookPoint booking")}">
         <button class="bp-modal__close" data-bp-close aria-label="${esc(i18n.close || "Close")}">&times;</button>
         <div class="bp-modal__body">
           <div class="bp-wizard">
-            <aside class="bp-wizard__aside" id="bpWizardAside"></aside>
+            <section class="bp-wizard__help" id="bpWizardHelp"></section>
             <section class="bp-wizard__main">
               <div class="bp-wizard__head">
                 <div>
@@ -107,6 +118,7 @@
               <div class="bp-wizard__content" id="bpWizardContent"></div>
               <div class="bp-mobilebar" id="bpMobileBar"></div>
             </section>
+            <section class="bp-wizard__summary" id="bpWizardSummary"></section>
           </div>
         </div>
       </div>
@@ -114,13 +126,14 @@
     document.body.appendChild(modal);
   }
 
-  const asideEl = modal.querySelector("#bpWizardAside");
+  if (!modal) createModal();
+  const helpEl = modal.querySelector("#bpWizardHelp");
+  const summaryEl = modal.querySelector("#bpWizardSummary");
   const stepperEl = modal.querySelector("#bpWizardStepper");
   const contentEl = modal.querySelector("#bpWizardContent");
-  const stepLabelEl = modal.querySelector("#bpWizardStepLabel");
   const mobileBarEl = modal.querySelector("#bpMobileBar");
+  const stepLabelEl = modal.querySelector("#bpWizardStepLabel");
 
-  const steps = ["Service", "Extras", "Staff", "Date + Time", "Your Details", "Confirm", "Success"];
   const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function resetWizard() {
@@ -150,67 +163,71 @@
     document.body.classList.remove("bp-modal-open");
   }
 
-  triggers.forEach((btn) => btn.addEventListener("click", openModal));
-  modal.addEventListener("click", (e) => { if (e.target.matches("[data-bp-close]")) closeModal(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modal.classList.contains("is-open")) closeModal(); });
+  triggers.forEach((btn) => {
+    btn.addEventListener("click", () => openModal());
+  });
+
+  modal.addEventListener("click", (e) => {
+    if (e.target.matches("[data-bp-close]")) closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.classList.contains("is-open")) closeModal();
+  });
 
   function handleError(err) {
     state.loading = false;
-    state.error = err?.message || "Something went wrong.";
+    state.error = err?.message || i18n.error || "Something went wrong.";
     render();
   }
 
-  async function ensureServices() {
-    if (state.services.length) return;
+  function ensureServices() {
+    if (state.services.length) return Promise.resolve();
     state.loading = true;
     render();
-    const res = await bpFetch("/bookpoint/v1/public/services");
-    state.services = res || [];
-    state.loading = false;
+    return bpFetch("/bookpoint/v1/services").then((res) => {
+      state.services = res || [];
+      state.loading = false;
+    });
   }
 
-  async function loadExtras(serviceId) {
+  function loadExtras(serviceId) {
     state.loading = true;
     render();
-    const res = await bpFetch(`/bookpoint/v1/public/extras?service_id=${serviceId}`);
-    state.extras = res || [];
-    state.loading = false;
+    return bpFetch(`/bookpoint/v1/extras?service_id=${serviceId}`).then((res) => {
+      state.extras = res || [];
+      state.loading = false;
+    });
   }
 
-  async function loadStaff(serviceId) {
+  function loadStaff(serviceId) {
     state.loading = true;
     render();
-    const res = await bpFetch(`/bookpoint/v1/public/staff?service_id=${serviceId}`);
-    state.staff = res || [];
-    state.loading = false;
+    return bpFetch(`/bookpoint/v1/staff?service_id=${serviceId}`).then((res) => {
+      state.staff = res || [];
+      state.loading = false;
+    });
   }
 
-  async function loadSlots() {
-    if (!state.selected.service || !state.selected.staff || !state.selected.date) return;
+  function loadSlots() {
+    if (!state.selected.service || !state.selected.staff || !state.selected.date) return Promise.resolve();
     state.loading = true;
     render();
-    const extras = (state.selected.extras || []).join(",");
     const url =
-      `/bookpoint/v1/public/timeslots?service_id=${state.selected.service.id}` +
+      `/bookpoint/v1/timeslots?service_id=${state.selected.service.id}` +
       `&staff_id=${state.selected.staff.id}` +
-      `&date=${encodeURIComponent(state.selected.date)}` +
-      `&extras=${encodeURIComponent(extras)}`;
-    const res = await bpFetch(url);
-    state.slots = res || [];
-    state.loading = false;
+      `&date=${encodeURIComponent(state.selected.date)}`;
+    return bpFetch(url).then((res) => {
+      state.slots = res || [];
+      state.loading = false;
+    });
   }
 
-  async function loadFormFields() {
-    state.formFields = {
-      defaults: [
-        { field_key: "first_name", label: "First Name", placeholder: "Jane", type: "text", required: true, enabled: true, width: "half" },
-        { field_key: "last_name", label: "Last Name", placeholder: "Doe", type: "text", required: true, enabled: true, width: "half" },
-        { field_key: "email", label: "Email Address", placeholder: "you@email.com", type: "email", required: true, enabled: true, width: "full" },
-        { field_key: "phone", label: "Phone Number", placeholder: "+1 555 555 5555", type: "tel", required: true, enabled: true, width: "full" },
-        { field_key: "note", label: "Note", placeholder: "Anything else?", type: "textarea", required: false, enabled: true, width: "full" }
-      ],
-      customs: []
-    };
+  function loadFormFields() {
+    return bpFetch("/bookpoint/v1/settings/form_fields").then((res) => {
+      const normalized = res && (res.defaults || res.customs) ? res : { defaults: [], customs: [] };
+      state.formFields.defaults = normalized.defaults || [];
+      state.formFields.customs = normalized.customs || [];
+    });
   }
 
   function calcExtras() {
@@ -225,34 +242,65 @@
     return base + calcExtras().price;
   }
 
-  function renderAside() {
-    const extras = calcExtras();
-    const summary = [
-      { label: "Service", value: state.selected.service?.name || "-" },
-      { label: "Extras", value: extras.selected.length ? `${extras.selected.length} selected` : "-" },
-      { label: "Staff", value: state.selected.staff?.name || "-" },
-      { label: "Date", value: state.selected.date || "-" },
-      { label: "Time", value: state.selected.slot?.start_time || "-" },
-      { label: "Total", value: formatPrice(calcTotal()) },
+  function renderHelpPanel() {
+    const desc = stepDescriptions[state.step] || "";
+    const phone = helpInfo.phone ? `<a href="tel:${esc(helpInfo.phone)}">${esc(helpInfo.phone)}</a>` : "";
+    const email = helpInfo.email ? `<a href="mailto:${esc(helpInfo.email)}">${esc(helpInfo.email)}</a>` : "";
+    const contactLine = phone || email ? `<div class="bp-help-card__support">Need help? ${phone}${phone && email ? " · " : ""}${email}</div>` : "";
+
+    return `
+      <div class="bp-help-card">
+        <div class="bp-help-card__icon">
+          <span>${state.step}</span>
+        </div>
+        <div class="bp-help-card__content">
+          <div class="bp-help-card__title">${esc(steps[state.step - 1] || "")}</div>
+          <div class="bp-help-card__desc">${esc(desc)}</div>
+        </div>
+      </div>
+      ${contactLine}
+    `;
+  }
+
+  function renderSummaryPanel() {
+    const extras = calcExtras().selected;
+    const extrasValue = extras.length
+      ? extras.map((ex) => `<div class="bp-summary-row bp-summary-row--sub">${esc(ex.name)} · ${formatPrice(ex.price)}</div>`).join("")
+      : `<div class="bp-summary-row bp-summary-row--sub">None</div>`;
+    const rows = [
+      { label: "Service", value: state.selected.service?.name || "—" },
+      { label: "Duration", value: state.selected.service ? `${state.selected.service.duration} min` : "—" },
+      { label: "Extras", value: extras.length ? `${extras.length} selected` : "None" },
+      { label: "Staff", value: state.selected.staff?.name || "—" },
+      { label: "Date", value: state.selected.date || "—" },
+      { label: "Time", value: state.selected.slot ? `${state.selected.slot.start_time} - ${state.selected.slot.end_time}` : "—" },
     ];
 
     return `
-      <div class="bp-aside__brand">
-        <div class="bp-aside__eyebrow">BookPoint</div>
-        <h3 class="bp-aside__title">${esc(steps[state.step - 1] || "")}</h3>
-      </div>
-      <div class="bp-aside__summary">
-        <div class="bp-aside__summary-title">Booking summary</div>
-        ${summary
-          .map(
-            (row) => `
-            <div class="bp-aside__row">
-              <span>${esc(row.label)}</span>
-              <strong>${esc(row.value)}</strong>
-            </div>
-          `
-          )
-          .join("")}
+      <div class="bp-summary-panel">
+        <div class="bp-summary-panel__header">
+          <div>
+            <div class="bp-summary-panel__eyebrow">Booking summary</div>
+            <h3 class="bp-summary-panel__title">Total: ${formatPrice(calcTotal())}</h3>
+          </div>
+          <div class="bp-summary-panel__tag">${esc(steps[state.step - 1] || "")}</div>
+        </div>
+        <div class="bp-summary-panel__body">
+          ${rows
+            .map(
+              (row) => `
+                <div class="bp-summary-row">
+                  <span>${esc(row.label)}</span>
+                  <strong>${esc(row.value)}</strong>
+                </div>
+              `,
+            )
+            .join("")}
+          <div class="bp-summary-row bp-summary-row--detail">
+            <span>Extras detail</span>
+            <div class="bp-summary-row__extras">${extrasValue}</div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -261,38 +309,17 @@
     return steps
       .map((label, index) => {
         const stepNum = index + 1;
-        const cls = state.step === stepNum ? "is-active" : state.step > stepNum ? "is-done" : "is-future";
-        const clickable = state.step > stepNum ? "is-clickable" : "";
+        const isActive = state.step === stepNum;
+        const isDone = state.step > stepNum;
+        const cls = isActive ? "is-active" : isDone ? "is-done" : "is-future";
         return `
-          <button class="bp-step ${cls} ${clickable}" data-step="${stepNum}" ${state.step > stepNum ? "" : "disabled"}>
+          <button class="bp-step ${cls} ${isDone ? "is-clickable" : ""}" ${isDone ? "" : "disabled"} data-step="${stepNum}">
             <div class="bp-step__num">${stepNum}</div>
             <div class="bp-step__label">${esc(label)}</div>
           </button>
         `;
       })
       .join("");
-  }
-
-  function renderEmpty(message) {
-    return `<div class="bp-empty">${esc(message)}</div>`;
-  }
-
-  function renderLoader() {
-    return `
-      <div class="bp-loader">
-        <div class="bp-spinner"></div>
-        <div>${esc(i18n.loading || "Loading...")}</div>
-      </div>
-    `;
-  }
-
-  function renderError() {
-    return `
-      <div class="bp-error">
-        <div>${esc(state.error)}</div>
-        <button class="bp-btn bp-btn--ghost" data-retry>Retry</button>
-      </div>
-    `;
   }
 
   function renderSkeletonCards(count, circle = false) {
@@ -306,17 +333,28 @@
               <div class="bp-skeleton bp-skeleton-line is-short"></div>
             </div>
           </div>
-        `
+        `,
       )
       .join("");
     return `<div class="bp-cards">${items}</div>`;
   }
 
   function renderSkeletonSlots() {
-    const items = Array.from({ length: 8 })
-      .map(() => `<div class="bp-skeleton bp-skeleton-slot"></div>`)
-      .join("");
+    const items = Array.from({ length: 8 }).map(() => `<div class="bp-skeleton bp-skeleton-slot"></div>`).join("");
     return `<div class="bp-slots">${items}</div>`;
+  }
+
+  function renderEmpty(message) {
+    return `<div class="bp-empty">${esc(message)}</div>`;
+  }
+
+  function renderError() {
+    return `
+      <div class="bp-error">
+        <div>${esc(state.error)}</div>
+        <button class="bp-btn bp-btn--ghost" data-retry>Retry</button>
+      </div>
+    `;
   }
 
   function renderServiceStep() {
@@ -333,13 +371,12 @@
             <img class="bp-card__img" alt="" src="${esc(img)}"/>
             <div class="bp-card__body">
               <div class="bp-card__title">${esc(s.name)}</div>
-              <div class="bp-card__meta">${esc(s.duration)} min | ${formatPrice(s.price)}</div>
+              <div class="bp-card__meta">${esc(s.duration)} min · ${formatPrice(s.price)}</div>
             </div>
           </button>
         `;
       })
       .join("");
-
     const disabled = state.selected.service ? "" : "disabled";
     return `
       <div class="bp-cards">${cards}</div>
@@ -356,24 +393,22 @@
     if (!state.extras.length) {
       return `${renderEmpty(i18n.noExtras || "No extras available.")}<div class="bp-actions"><button class="bp-btn bp-btn--ghost" data-back>${esc(i18n.back || "Back")}</button><button class="bp-btn" data-next>${esc(i18n.next || "Next")}</button></div>`;
     }
-
-    const selected = new Set((state.selected.extras || []).map(String));
+    const selectedIds = new Set((state.selected.extras || []).map(String));
     const cards = state.extras
       .map((ex) => {
-        const active = selected.has(String(ex.id)) ? "is-selected" : "";
+        const active = selectedIds.has(String(ex.id)) ? "is-selected" : "";
         const img = ex.image_url || defaults.extraImg;
         return `
           <button class="bp-card ${active}" data-extra="${ex.id}">
             <img class="bp-card__img" alt="" src="${esc(img)}"/>
             <div class="bp-card__body">
               <div class="bp-card__title">${esc(ex.name)}</div>
-              <div class="bp-card__meta">+${formatPrice(ex.price)} | +${esc(ex.duration)} min</div>
+              <div class="bp-card__meta">+${formatPrice(ex.price)} · +${esc(ex.duration)} min</div>
             </div>
           </button>
         `;
       })
       .join("");
-
     return `
       <div class="bp-cards">${cards}</div>
       <div class="bp-actions">
@@ -390,7 +425,6 @@
     if (!state.staff.length) {
       return `${renderEmpty(i18n.noStaff || "No staff available.")}<div class="bp-actions"><button class="bp-btn bp-btn--ghost" data-back>${esc(i18n.back || "Back")}</button></div>`;
     }
-
     const cards = state.staff
       .map((st) => {
         const active = state.selected.staff?.id === st.id ? "is-selected" : "";
@@ -406,7 +440,6 @@
         `;
       })
       .join("");
-
     const disabled = state.selected.staff ? "" : "disabled";
     return `
       <div class="bp-cards">${cards}</div>
@@ -418,27 +451,20 @@
   }
 
   function renderDateStep() {
-    const dateValue = state.selected.date || "";
     const today = new Date().toISOString().slice(0, 10);
     const slots = state.slots || [];
     const slotButtons = slots
       .map((slot) => {
         const active = state.selected.slot?.start_time === slot.start_time ? "is-selected" : "";
-        return `
-          <button class="bp-slot ${active}" data-slot="${esc(slot.start_time)}">
-            ${esc(slot.start_time)} - ${esc(slot.end_time)}
-          </button>
-        `;
+        return `<button class="bp-slot ${active}" data-slot="${esc(slot.start_time)}">${esc(slot.start_time)} - ${esc(slot.end_time)}</button>`;
       })
       .join("");
-
     const noSlots = !state.loading && state.selected.date && !slots.length;
     const disabled = state.selected.slot ? "" : "disabled";
-
     return `
       <div class="bp-form">
         <label>Date</label>
-        <input type="date" id="bpDate" min="${esc(today)}" value="${esc(dateValue)}"/>
+        <input type="date" id="bpDate" min="${esc(today)}" value="${esc(state.selected.date || "")}"/>
         <button class="bp-btn bp-btn--ghost" data-find>Find times</button>
       </div>
       ${state.loading ? renderSkeletonSlots() : `<div class="bp-slots">${slotButtons}</div>`}
@@ -452,7 +478,10 @@
 
   function renderCustomerStep() {
     const errors = state.formErrors || {};
-    const fields = [...(state.formFields.defaults || []), ...(state.formFields.customs || [])].filter((f) => f.enabled);
+    const fields = [...(state.formFields.defaults || []), ...(state.formFields.customs || [])].filter((field) => {
+      if (field.enabled === false || String(field.enabled) === "0") return false;
+      return true;
+    });
     const fieldHtml = fields
       .map((field) => {
         const key = field.field_key || field.key;
@@ -476,7 +505,9 @@
               <label>${esc(field.label)}</label>
               <select data-field="${esc(key)}">
                 <option value="">Select...</option>
-                ${options.map((opt) => `<option value="${esc(opt)}" ${String(value) === String(opt) ? "selected" : ""}>${esc(opt)}</option>`).join("")}
+                ${options
+                  .map((opt) => `<option value="${esc(opt)}" ${String(value) === String(opt) ? "selected" : ""}>${esc(opt)}</option>`)
+                  .join("")}
               </select>
               ${errorMsg}
             </div>
@@ -520,7 +551,6 @@
     const extrasHtml = extras.length
       ? extras.map((e) => `<span>${esc(e.name)}</span>`).join(", ")
       : "<span>None</span>";
-
     return `
       <div class="bp-summary">
         <div><strong>Service</strong> ${esc(state.selected.service?.name || "")}</div>
@@ -539,18 +569,20 @@
 
   function renderSuccessStep() {
     return `
-      <div class="bp-success">
+      <div class="bp-success bp-success--modern">
         <div class="bp-success__icon">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 16.2L4.9 11.9l1.4-1.4 2.9 2.9 8.5-8.5 1.4 1.4z"/></svg>
         </div>
-        <h3>Booking received</h3>
-        <p>Code: <strong>${esc(state.booking.code || "")}</strong></p>
+        <h3>${esc(i18n.successTitle || "Booking received")}</h3>
+        <p>${esc(i18n.successMsg || "You’ll receive a confirmation shortly.")}</p>
+        <p class="bp-success__code">Code: <strong>${esc(state.booking.code || "")}</strong></p>
         <p>Status: <strong>${esc(state.booking.status || "pending")}</strong></p>
         <div class="bp-summary">
           <div><strong>Service</strong> ${esc(state.selected.service?.name || "")}</div>
           <div><strong>Staff</strong> ${esc(state.selected.staff?.name || "")}</div>
           <div><strong>Date</strong> ${esc(state.selected.date || "")}</div>
           <div><strong>Time</strong> ${esc(state.selected.slot?.start_time || "")} - ${esc(state.selected.slot?.end_time || "")}</div>
+          <div><strong>Total</strong> ${formatPrice(calcTotal())}</div>
         </div>
         <div class="bp-actions">
           <button class="bp-btn" data-bp-close>${esc(i18n.close || "Close")}</button>
@@ -561,14 +593,24 @@
 
   function renderContent() {
     if (state.error) return renderError();
-    if (state.step === 1) return renderServiceStep();
-    if (state.step === 2) return renderExtrasStep();
-    if (state.step === 3) return renderStaffStep();
-    if (state.step === 4) return renderDateStep();
-    if (state.step === 5) return renderCustomerStep();
-    if (state.step === 6) return renderConfirmStep();
-    if (state.step === 7) return renderSuccessStep();
-    return "";
+    switch (state.step) {
+      case 1:
+        return renderServiceStep();
+      case 2:
+        return renderExtrasStep();
+      case 3:
+        return renderStaffStep();
+      case 4:
+        return renderDateStep();
+      case 5:
+        return renderCustomerStep();
+      case 6:
+        return renderConfirmStep();
+      case 7:
+        return renderSuccessStep();
+      default:
+        return "";
+    }
   }
 
   function renderMobileBar() {
@@ -576,11 +618,11 @@
     const label = state.step === 6 ? (i18n.confirm || "Confirm booking") : (i18n.next || "Next");
     const canNext =
       (state.step === 1 && state.selected.service) ||
-      (state.step === 2) ||
+      state.step === 2 ||
       (state.step === 3 && state.selected.staff) ||
       (state.step === 4 && state.selected.slot) ||
-      (state.step === 5) ||
-      (state.step === 6);
+      state.step === 5 ||
+      state.step === 6;
     return `
       <div class="bp-mobilebar__content">
         <div>
@@ -593,10 +635,10 @@
   }
 
   function render() {
-    asideEl.innerHTML = renderAside();
+    helpEl.innerHTML = renderHelpPanel();
+    summaryEl.innerHTML = renderSummaryPanel();
     stepperEl.innerHTML = renderStepper();
     stepLabelEl.textContent = steps[state.step - 1] || "";
-    const html = renderContent();
     const existing = contentEl.querySelector(".bp-step-container");
     if (existing) {
       if (!reducedMotion) existing.classList.add("leaving");
@@ -604,7 +646,7 @@
     }
     const container = document.createElement("div");
     container.className = "bp-step-container";
-    container.innerHTML = html;
+    container.innerHTML = renderContent();
     contentEl.appendChild(container);
     if (!reducedMotion) {
       requestAnimationFrame(() => container.classList.add("entering"));
@@ -634,15 +676,20 @@
     });
 
     mobileBarEl.querySelectorAll("[data-mobile-next]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        handleNext();
-      });
+      btn.addEventListener("click", () => handleNext());
     });
 
     contentEl.querySelectorAll("[data-service]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const service = state.services.find((s) => String(s.id) === String(btn.dataset.service));
         state.selected.service = service || null;
+        state.selected.extras = [];
+        state.selected.staff = null;
+        state.selected.date = "";
+        state.selected.slot = null;
+        state.extras = [];
+        state.staff = [];
+        state.slots = [];
         render();
       });
     });
@@ -660,8 +707,8 @@
 
     contentEl.querySelectorAll("[data-staff]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const staff = state.staff.find((s) => String(s.id) === String(btn.dataset.staff));
-        state.selected.staff = staff || null;
+        const member = state.staff.find((s) => String(s.id) === String(btn.dataset.staff));
+        state.selected.staff = member || null;
         render();
       });
     });
@@ -688,13 +735,9 @@
       const key = input.dataset.field;
       if (!key) return;
       const handler = () => {
-        if (input.type === "checkbox") {
-          state.formValues[key] = input.checked;
-        } else if (input.tagName === "SELECT") {
-          state.formValues[key] = input.value;
-        } else {
-          state.formValues[key] = input.value;
-        }
+        if (input.type === "checkbox") state.formValues[key] = input.checked;
+        else if (input.tagName === "SELECT") state.formValues[key] = input.value;
+        else state.formValues[key] = input.value;
       };
       input.addEventListener("change", handler);
       input.addEventListener("input", handler);
@@ -739,28 +782,32 @@
         state.error = "";
         state.loading = true;
         render();
+        const extrasSelected = calcExtras().selected.map((e) => ({
+          id: e.id,
+          name: e.name,
+          price: e.price,
+          duration: e.duration,
+        }));
         const payload = {
           service_id: state.selected.service?.id,
           staff_id: state.selected.staff?.id,
           booking_date: state.selected.date,
           start_time: state.selected.slot?.start_time,
           end_time: state.selected.slot?.end_time,
-          extras_json: state.selected.extras,
-          customer_first_name: state.formValues.first_name || "",
-          customer_last_name: state.formValues.last_name || "",
-          customer_email: state.formValues.email || "",
-          customer_phone: state.formValues.phone || "",
-          customer_note: state.formValues.note || "",
+          extras_json: extrasSelected,
+          customer_json: state.formValues || {},
           status: "pending",
+          subtotal: calcTotal(),
           total: calcTotal(),
+          currency: currencySettings.currency_symbol_after || currencySettings.currency_symbol_before || "",
         };
         try {
-          const res = await bpFetch("/bookpoint/v1/public/bookings", {
+          const res = await bpFetch("/bookpoint/v1/bookings", {
             method: "POST",
             body: JSON.stringify(payload),
           });
           state.booking.code = res?.booking_code || "";
-          state.booking.status = "pending";
+          state.booking.status = res?.status || "pending";
           state.loading = false;
           state.step = 7;
           render();
@@ -770,7 +817,6 @@
       });
     }
   }
-
   async function handleNext() {
     state.error = "";
     state.formErrors = {};
@@ -807,13 +853,16 @@
     }
 
     if (state.step === 5) {
-      const fields = [...(state.formFields.defaults || []), ...(state.formFields.customs || [])].filter((f) => f.enabled);
+      const fields = [...(state.formFields.defaults || []), ...(state.formFields.customs || [])].filter((field) => {
+        if (field.enabled === false || String(field.enabled) === "0") return false;
+        return true;
+      });
       const errors = {};
       fields.forEach((field) => {
-        if (!field.required) return;
         const key = field.field_key || field.key;
+        const isRequired = field.required === true || String(field.required) === "1";
         const value = state.formValues[key];
-        if (!value || String(value).trim() === "") errors[key] = true;
+        if (isRequired && (!value || String(value).trim() === "")) errors[key] = true;
       });
       state.formErrors = errors;
       if (Object.keys(errors).length) {
@@ -855,4 +904,6 @@
     }
     render();
   }
+
+  render();
 })();

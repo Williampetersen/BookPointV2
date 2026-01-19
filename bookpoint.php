@@ -2,13 +2,13 @@
 /**
  * Plugin Name: BookPoint
  * Description: Modern booking system with admin dashboard and frontend wizard.
- * Version: 2.0.0
+ * Version: 3.0.0
  * Author: BookPoint
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'BOOKPOINT_VERSION', '2.0.0' );
+define( 'BOOKPOINT_VERSION', '3.0.0' );
 define( 'BOOKPOINT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BOOKPOINT_URL', plugin_dir_url( __FILE__ ) );
 
@@ -25,7 +25,6 @@ require_once BOOKPOINT_DIR . 'includes/class-bookpoint-db.php';
 require_once BOOKPOINT_DIR . 'includes/class-bookpoint-rest.php';
 require_once BOOKPOINT_DIR . 'includes/class-bookpoint-admin.php';
 require_once BOOKPOINT_DIR . 'includes/class-bookpoint-public.php';
-
 function bookpoint_run() {
 	return BookPoint::instance();
 }

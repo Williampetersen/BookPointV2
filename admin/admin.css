@@ -9,40 +9,44 @@ body.bookpoint-fullscreen #wpadminbar {
 }
 
 .bp-shell {
-  min-height: calc(100vh - 32px);
+  min-height: 100vh;
   display: flex;
-  background: radial-gradient(circle at 10% 10%, #fdf4ff 0%, #f8fafc 35%, #eef2ff 100%);
-  margin: -20px 0 0 -20px;
-  font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+  background: #f4f6fb;
+  margin: 0;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   color: #0f172a;
 }
 
 .bp-sidebar {
-  width: 270px;
+  width: 260px;
   background: #ffffff;
-  border-right: 1px solid #e6e8ef;
-  padding: 16px;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  box-shadow: 0 5px 30px rgba(15, 23, 42, 0.08);
+  position: sticky;
+  top: 0;
 }
 
 .bp-brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 6px;
 }
 .bp-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #111827, #2563eb);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.2);
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #111827, #3b82f6);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
 }
 .bp-brand-name {
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: 0.3px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.2px;
 }
 
 .bp-nav {
@@ -214,7 +218,7 @@ body.bookpoint-fullscreen #wpadminbar {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 6px;
 }
 .bp-item {
   border: 1px solid #e6e8ef;
@@ -331,6 +335,9 @@ body.bookpoint-fullscreen #wpadminbar {
   padding: 10px 14px;
   font-weight: 700;
   cursor: pointer;
+}
+.bp-btn--saved {
+  background: #16a34a;
 }
 .bp-btn--ghost {
   background: #ffffff;
@@ -465,11 +472,101 @@ body.bookpoint-fullscreen #wpadminbar {
   border: 1px solid #e5e7eb;
   margin-bottom: 10px;
 }
+.bp-toasts {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9999;
+}
 .bp-toast--ok {
   border-color: #10b981;
 }
 .bp-toast--bad {
   border-color: #ef4444;
+}
+
+.bp-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.3);
+  display: grid;
+  place-items: center;
+  z-index: 10000;
+}
+.bp-modal__panel {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px;
+  width: min(520px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
+  border: 1px solid #e6e8ef;
+}
+
+.bp-skeleton {
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.4), rgba(226, 232, 240, 0.8), rgba(226, 232, 240, 0.4));
+  background-size: 200% 100%;
+  animation: bp-skeleton 1.4s ease-in-out infinite;
+  border-radius: 10px;
+  min-height: 18px;
+}
+
+.bp-skeleton-line {
+  height: 12px;
+  margin-bottom: 10px;
+  width: 100%;
+  border-radius: 6px;
+  background: rgba(226, 232, 240, 0.8);
+}
+
+@keyframes bp-skeleton {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.bp-toast {
+  animation: bp-toast-fade 0.35s ease-out forwards;
+}
+
+@keyframes bp-toast-fade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 960px) {
+  .bp-shell {
+    flex-direction: column;
+  }
+  .bp-sidebar {
+    width: 100%;
+    position: relative;
+    z-index: 5;
+  }
+  .bp-main {
+    padding: 12px 16px 24px;
+  }
+  .bp-grid {
+    grid-template-columns: 1fr;
+  }
+  .bp-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .bp-nav-item {
+    flex: 1 1 48%;
+    text-align: center;
+  }
 }
 
 @media (max-width: 1100px) {
